@@ -9,7 +9,7 @@ export function HandTracking(){
     if (videoRef.current && canvasRef.current) {
       startHandTracking(videoRef.current, canvasRef.current);
     }
-  }, []);
+  }, [])
 
   return (
     <div style={{ position: "relative", width: "640px", height: "480px" }}>
