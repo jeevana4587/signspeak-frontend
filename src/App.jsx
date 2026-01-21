@@ -1,10 +1,7 @@
+import Room from "./pages/Room";
+
 function App() {
-  return (
-    <div>
-      <h1>SignSpeak Frontend</h1>
-      <p>Real-time Sign Language to Text Translation</p>
-    </div>
-  );
+  return <Room />;
 }
 
 export default App;
