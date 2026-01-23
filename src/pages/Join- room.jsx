@@ -1,36 +1,39 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { socket } from "../services/socket";
 
-function JoinRoom() {
+const JoinCall = () => {
   const [roomId, setRoomId] = useState("");
   const navigate = useNavigate();
 
-  const handleJoin = () => {
-    if (!roomId.trim()) {
-      alert("Please enter a Room ID");
-      return;
+  const joinRoom = () => {
+    if (!roomId) return;
+
+    if (!socket.connected) {
+      socket.connect();
     }
-    navigate("/call"); // mocked
+
+    socket.emit("join-room", roomId);
+    navigate(`/room/${roomId}`);
   };
 
   return (
     <div style={styles.container}>
-      <h1 style={styles.title}>Join a Room</h1>
+        <h2 style={styles.title}>Join Call</h2>
 
-      <input
-        type="text"
-        placeholder="Enter Room ID"
-        value={roomId}
-        onChange={(e) => setRoomId(e.target.value)}
-        style={styles.input}
-      />
+        <input
+          value={roomId}
+          onChange={(e) => setRoomId(e.target.value)}
+          placeholder="Enter Room ID"
+          style={styles.input}
+        />
 
-      <button style={styles.button} onClick={handleJoin}>
-        Join Call
-      </button>
+        <button onClick={joinRoom} style={styles.button}>
+          Join
+        </button>
     </div>
   );
-}
+};
 
 const styles = {
   container: {
@@ -74,4 +77,4 @@ const styles = {
   },
 };
 
-export default JoinRoom;
+export default JoinCall;

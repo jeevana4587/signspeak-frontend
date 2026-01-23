@@ -18,9 +18,9 @@ function LandingPage() {
 
         <button
           style={styles.secondaryBtn}
-          onClick={() => navigate("/hand-demo")}
+          onClick={() => navigate("/create")}
         >
-          Hand Tracking Demo
+          Make a Call
         </button>
       </div>
     </div>
