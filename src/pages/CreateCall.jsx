@@ -1,8 +1,25 @@
 import { useNavigate } from "react-router-dom";
+import { useEffect, useState } from "react";
 
 const CreateCall = () => {
   const navigate = useNavigate();
-  const roomId = "ABCD-1234"; // later make this dynamic
+  const [roomId, setRoomId] = useState("");
+
+  useEffect(() => {
+    const existingRoomId = sessionStorage.getItem("roomId");
+
+    if (existingRoomId) {
+      setRoomId(existingRoomId);
+    } else {
+      const newRoomId = Math.random()
+        .toString(36)
+        .substring(2, 8)
+        .toUpperCase();
+
+      sessionStorage.setItem("roomId", newRoomId);
+      setRoomId(newRoomId);
+    }
+  }, []);
 
   const startCall = () => {
     navigate(`/room/${roomId}`);
@@ -36,6 +53,7 @@ const CreateCall = () => {
 };
 
 export default CreateCall;
+
 
 /* ---------- styles ---------- */
 

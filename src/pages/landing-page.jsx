@@ -3,6 +3,9 @@ import { useNavigate } from "react-router-dom";
 function LandingPage() {
   const navigate = useNavigate();
 
+  sessionStorage.removeItem("roomId");
+  navigate("/create-call");
+
   return (
     <div style={styles.container}>
       <h1 style={styles.title}>SignSpeak</h1>
