@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { socket } from "../services/socket";
+import { io } from "socket.io-client";
+
 import {
   createPeerConnection,
   getLocalStream,
@@ -18,6 +19,7 @@ const Room = () => {
 
   const localVideoRef = useRef(null);
   const remoteVideoRef = useRef(null);
+  const socketRef = useRef(null);
 
   const [participants, setParticipants] = useState(1);
   const [status, setStatus] = useState("");
@@ -27,49 +29,55 @@ const Room = () => {
 
     const initRoom = async () => {
       try {
-        // 1️⃣ Get local camera + mic
-        await getLocalStream(localVideoRef.current);
+        // 1️⃣ Create socket PER TAB
+        socketRef.current = io("http://localhost:5000");
 
+        const socket = socketRef.current;
+
+        // 2️⃣ Get camera + mic
+        await getLocalStream(localVideoRef.current);
         if (!mounted) return;
 
-        // 2️⃣ Setup PeerConnection
+        // 3️⃣ Create PeerConnection
         createPeerConnection(socket, roomId, (remoteStream) => {
-          if (remoteVideoRef.current) remoteVideoRef.current.srcObject = remoteStream;
+          if (remoteVideoRef.current) {
+            remoteVideoRef.current.srcObject = remoteStream;
+          }
         });
 
         addTracksToPeer();
 
-        // 3️⃣ Connect socket
-        socket.connect();
+        // 4️⃣ Join room
         socket.emit("join-room", { roomId });
 
-        // 4️⃣ Socket events
+        // 5️⃣ Signaling events
         socket.on("peer-joined", async () => {
-          console.log("Peer joined!");
+          console.log("Peer joined → creating offer");
           setParticipants(2);
           setStatus("");
           await createAndSendOffer(socket, roomId);
         });
 
         socket.on("offer", async (offer) => {
-          console.log("Offer received", offer);
+          console.log("Offer received");
           await handleOffer(socket, roomId, offer);
         });
 
         socket.on("answer", async (answer) => {
-           console.log("Answer received", answer);
+          console.log("Answer received");
           await handleAnswer(answer);
         });
 
         socket.on("ice-candidate", async (candidate) => {
-          console.log("ICE candidate", candidate);
           await handleIceCandidate(candidate);
         });
 
         socket.on("peer-left", () => {
           setParticipants(1);
           setStatus("The other user left the call");
-          if (remoteVideoRef.current) remoteVideoRef.current.srcObject = null;
+          if (remoteVideoRef.current) {
+            remoteVideoRef.current.srcObject = null;
+          }
         });
       } catch (err) {
         console.error("Room init error:", err);
@@ -86,31 +94,29 @@ const Room = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [roomId]);
 
-  const cleanupRoom = (emitLeave = true) => {
-    if (emitLeave) socket.emit("leave-room", { roomId });
+  const cleanupRoom = () => {
+    const socket = socketRef.current;
+    if (!socket) return;
 
-    // Remove all socket listeners for this room
+    socket.emit("leave-room", { roomId });
+
     socket.off("peer-joined");
     socket.off("offer");
     socket.off("answer");
     socket.off("ice-candidate");
     socket.off("peer-left");
 
-    // Stop all media + close peer
-    cleanupWebRTC();
-
-    // Disconnect socket safely
     socket.disconnect();
+    cleanupWebRTC();
   };
 
   const leaveCall = () => {
-    cleanupRoom(true);
+    cleanupRoom();
     navigate("/");
   };
 
   return (
     <div style={styles.page}>
-      {/* VIDEOS */}
       <div style={styles.videoWrapper}>
         <video
           ref={localVideoRef}
@@ -127,7 +133,6 @@ const Room = () => {
         />
       </div>
 
-      {/* INFO */}
       <div style={styles.info}>
         <p><strong>Room ID:</strong> {roomId}</p>
         <p>Participants: {participants}</p>
@@ -136,7 +141,9 @@ const Room = () => {
           <p style={{ opacity: 0.7 }}>Waiting for someone to join…</p>
         )}
 
-        {status && <p style={{ color: "#f87171", marginTop: "8px" }}>{status}</p>}
+        {status && (
+          <p style={{ color: "#f87171", marginTop: "8px" }}>{status}</p>
+        )}
 
         <button onClick={leaveCall} style={styles.leaveBtn}>
           Leave Call
@@ -148,7 +155,7 @@ const Room = () => {
 
 export default Room;
 
-/* ---------- STYLES ---------- */
+/* STYLES UNCHANGED */
 const styles = {
   page: {
     minHeight: "100vh",
@@ -180,6 +187,6 @@ const styles = {
     color: "#fff",
     border: "none",
     borderRadius: "10px",
-    cursor: "pointer"
+    cursor: "pointer",
   },
 };
