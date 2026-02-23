@@ -1,104 +1,78 @@
 import { useEffect, useRef } from "react";
 import { Hands, HAND_CONNECTIONS } from "@mediapipe/hands";
-import { Camera } from "@mediapipe/camera_utils";
 import { drawConnectors, drawLandmarks } from "@mediapipe/drawing_utils";
+
+export let latestLandmarks = null;
 
 export default function HandTracking() {
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
 
   useEffect(() => {
-    if (!videoRef.current || !canvasRef.current) return;
+    let stream;
+    let hands;
 
-    const video = videoRef.current;
-    const canvas = canvasRef.current;
-    const ctx = canvas.getContext("2d");
+    const init = async () => {
+      const video = videoRef.current;
+      const canvas = canvasRef.current;
+      const ctx = canvas.getContext("2d");
 
-    const hands = new Hands({
-      locateFile: (file) =>
-        `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`,
-    });
+      stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      video.srcObject = stream;
+      await video.play();
 
-    hands.setOptions({
-      maxNumHands: 2,
-      modelComplexity: 1,
-      minDetectionConfidence: 0.7,
-      minTrackingConfidence: 0.7,
-    });
+      hands = new Hands({
+        locateFile: (file) =>
+          `/node_modules/@mediapipe/hands/${file}`,
+      });
 
-    hands.onResults((results) => {
-      if (!video.videoWidth || !video.videoHeight) return;
+      hands.setOptions({
+        maxNumHands: 1,
+        modelComplexity: 0,
+        minDetectionConfidence: 0.7,
+        minTrackingConfidence: 0.7,
+      });
 
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
+      hands.onResults((results) => {
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
 
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-      if (
-        results.multiHandLandmarks &&
-        results.multiHandLandmarks.length > 0
-      ) {
-        results.multiHandLandmarks.forEach((hand) => {
-          drawConnectors(ctx, hand, HAND_CONNECTIONS);
-          drawLandmarks(ctx, hand);
-        });
+        if (results.multiHandLandmarks?.length > 0) {
+          const landmarks = results.multiHandLandmarks[0];
 
-        const cleanLandmarks = results.multiHandLandmarks.map((hand) =>
-          hand.map((p) => ({ x: p.x, y: p.y, z: p.z }))
-        );
+          drawConnectors(ctx, landmarks, HAND_CONNECTIONS);
+          drawLandmarks(ctx, landmarks);
 
-        console.log("Hand landmarks:", cleanLandmarks);
-      }
-    });
+          latestLandmarks = landmarks;
+        } else {
+          latestLandmarks = null;
+        }
+      });
 
-    const camera = new Camera(video, {
-      onFrame: async () => {
+      const loop = async () => {
         await hands.send({ image: video });
-      },
-      width: 640,
-      height: 480,
-    });
+        requestAnimationFrame(loop);
+      };
 
-    camera.start();
+      loop();
+    };
+
+    init();
 
     return () => {
-      camera.stop();
+      if (stream) {
+        stream.getTracks().forEach((track) => track.stop());
+      }
     };
   }, []);
 
   return (
-    <div
-      style={{
-        position: "fixed",
-        top: 0,
-        left: 0,
-        width: "100vw",
-        height: "100vh",
-        overflow: "hidden",
-        background: "black",
-      }}
-    >
-      <video
-        ref={videoRef}
-        autoPlay
-        playsInline
-        muted
-        style={{
-          width: "100%",
-          height: "100%",
-          objectFit: "cover",
-        }}
-      />
-      <canvas
-        ref={canvasRef}
-        style={{
-          position: "absolute",
-          top: 0,
-          left: 0,
-          width: "100%",
-          height: "100%",
-        }}
-      />
+    <div style={{ width: "640px", height: "480px" }}>
+      <video ref={videoRef} style={{ display: "none" }} />
+      <canvas ref={canvasRef} />
     </div>
   );
 }

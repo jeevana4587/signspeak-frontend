@@ -1,6 +1,5 @@
-import HandTracking from "./mediapipe/HandTracking";
-
+import GesturePredict from "./pages/GesturePredict";
 
 export default function App() {
-  return <HandTracking />;
+  return <GesturePredict />;
 }
