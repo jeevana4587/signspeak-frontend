@@ -1,6 +1,6 @@
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import LandingPage from "./pages/landing-page.jsx";
-import JoinCall from "./pages/Join- room.jsx";
+import JoinCall from "./pages/Join- Room.jsx";
 import VideoCall from "./pages/VideoCall";
 import HandTrackingDemo from "./pages/HandTrackingDemo";
 import Room from "./pages/Room";
