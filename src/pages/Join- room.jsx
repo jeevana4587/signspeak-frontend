@@ -1,0 +1,80 @@
+import { useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { socket } from "../services/socket";
+
+const JoinCall = () => {
+  const [roomId, setRoomId] = useState("");
+  const navigate = useNavigate();
+
+  const joinRoom = () => {
+    if (!roomId) return;
+
+    if (!socket.connected) {
+      socket.connect();
+    }
+
+    socket.emit("join-room", roomId);
+    navigate(`/room/${roomId}`);
+  };
+
+  return (
+    <div style={styles.container}>
+        <h2 style={styles.title}>Join Call</h2>
+
+        <input
+          value={roomId}
+          onChange={(e) => setRoomId(e.target.value)}
+          placeholder="Enter Room ID"
+          style={styles.input}
+        />
+
+        <button onClick={joinRoom} style={styles.button}>
+          Join
+        </button>
+    </div>
+  );
+};
+
+const styles = {
+  container: {
+    minHeight: "100vh",          // 🔥 FULL SCREEN FIX
+    width: "100vw",
+    display: "flex",
+    flexDirection: "column",
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "#0f172a",
+    color: "#ffffff",
+    textAlign: "center",
+    fontFamily: "'Times New Roman MT', 'Times New Roman', serif",
+  },
+
+  title: {
+    fontSize: "3rem",
+    fontWeight: "bold",
+    marginBottom: "24px",
+  },
+
+  input: {
+    width: "280px",
+    padding: "12px",
+    fontSize: "1rem",
+    borderRadius: "6px",
+    border: "1px solid #94a3b8",
+    marginBottom: "20px",
+    fontFamily: "'Times New Roman MT', 'Times New Roman', serif",
+  },
+
+  button: {
+    padding: "12px 30px",
+    fontSize: "1rem",
+    borderRadius: "6px",
+    border: "none",
+    cursor: "pointer",
+    backgroundColor: "#38bdf8",
+    color: "#020617",
+    fontFamily: "'Times New Roman MT', 'Times New Roman', serif",
+  },
+};
+
+export default JoinCall;
