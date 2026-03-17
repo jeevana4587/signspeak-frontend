@@ -44,19 +44,12 @@ export function createPeerConnection(socket, roomId, onRemoteStream) {
 /* -------------------- MEDIA -------------------- */
 
 export async function getLocalStream(videoEl) {
-  if (
-    !navigator.mediaDevices ||
-    typeof navigator.mediaDevices.getUserMedia !== "function"
-  ) {
-    throw new Error("Camera/Microphone not supported or insecure context");
+  if (!localStream) {
+    localStream = await navigator.mediaDevices.getUserMedia({
+      video: true,
+      audio: true,
+    });
   }
-
-  if (localStream) return localStream;
-
-  localStream = await navigator.mediaDevices.getUserMedia({
-    video: true,
-    audio: true,
-  });
 
   if (videoEl) {
     videoEl.srcObject = localStream;
@@ -70,25 +63,15 @@ export async function getLocalStream(videoEl) {
 export function addTracksToPeer() {
   if (!peerConnection || !localStream) return;
 
-  const senders = peerConnection.getSenders();
-
+  // ALWAYS add tracks to peer
   localStream.getTracks().forEach((track) => {
-    const alreadyAdded = senders.find(
-      (sender) => sender.track === track
-    );
-    if (!alreadyAdded) {
-      peerConnection.addTrack(track, localStream);
-    }
+    peerConnection.addTrack(track, localStream);
   });
 }
 
 /* -------------------- SIGNALING -------------------- */
 
 export async function createAndSendOffer(socket, roomId) {
-  if (!peerConnection) {
-    throw new Error("PeerConnection not initialized before creating offer");
-  }
-
   const offer = await peerConnection.createOffer();
   await peerConnection.setLocalDescription(offer);
 
@@ -96,11 +79,9 @@ export async function createAndSendOffer(socket, roomId) {
 }
 
 export async function handleOffer(socket, roomId, offer) {
-  if (!peerConnection) {
-    throw new Error("PeerConnection not initialized before handling offer");
-  }
-
-  await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
+  await peerConnection.setRemoteDescription(
+    new RTCSessionDescription(offer)
+  );
 
   const answer = await peerConnection.createAnswer();
   await peerConnection.setLocalDescription(answer);
@@ -124,7 +105,7 @@ export async function handleIceCandidate(candidate) {
       new RTCIceCandidate(candidate)
     );
   } catch (err) {
-    console.error("Error adding ICE candidate:", err);
+    console.error("ICE error:", err);
   }
 }
 
@@ -132,8 +113,6 @@ export async function handleIceCandidate(candidate) {
 
 export function cleanupWebRTC() {
   if (peerConnection) {
-    peerConnection.ontrack = null;
-    peerConnection.onicecandidate = null;
     peerConnection.close();
     peerConnection = null;
   }

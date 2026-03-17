@@ -1,319 +1,316 @@
 import { useEffect, useRef, useState } from "react";
-import { useParams, useNavigate } from "react-router-dom";
-import { io } from "socket.io-client";
+import { useParams, useNavigate, useLocation } from "react-router-dom";
+import { socket } from "../services/socket";
 
 import {
-  createPeerConnection,
-  getLocalStream,
-  addTracksToPeer,
-  createAndSendOffer,
-  handleOffer,
-  handleAnswer,
-  handleIceCandidate,
-  cleanupWebRTC,
+createPeerConnection,
+getLocalStream,
+addTracksToPeer,
+createAndSendOffer,
+handleOffer,
+handleAnswer,
+handleIceCandidate,
+cleanupWebRTC,
 } from "../services/webrtc";
 
 const Room = () => {
-  const { roomId } = useParams();
-  const navigate = useNavigate();
 
-  const localVideoRef = useRef(null);
-  const remoteVideoRef = useRef(null);
-  const socketRef = useRef(null);
+const { roomId } = useParams();
+const navigate = useNavigate();
+const location = useLocation();
 
-  const [participants, setParticipants] = useState(1);
-  const [status, setStatus] = useState("");
-  const [micOn, setMicOn] = useState(true);
-  const [camOn, setCamOn] = useState(true);
-  const [showSettings, setShowSettings] = useState(false);
-  const [showHelp, setShowHelp] = useState(false); // NEW
+const userName = location?.state?.name || "Guest";
 
-  useEffect(() => {
-    const socket = io("http://localhost:5000");
-    socketRef.current = socket;
+const localVideoRef = useRef(null);
+const remoteVideoRef = useRef(null);
+const socketRef = useRef(null);
 
-    const init = async () => {
-      try {
-        await getLocalStream(localVideoRef.current);
+const [participants, setParticipants] = useState(1);
+const [status, setStatus] = useState("");
+const [micOn, setMicOn] = useState(true);
+const [camOn, setCamOn] = useState(true);
+const [showSettings, setShowSettings] = useState(false);
+const [showHelp, setShowHelp] = useState(false);
+const [remoteName, setRemoteName] = useState("Participant");
 
-        createPeerConnection(socket, roomId, (remoteStream) => {
-          if (remoteVideoRef.current) {
-            remoteVideoRef.current.srcObject = remoteStream;
-          }
-        });
+useEffect(() => {
 
-        addTracksToPeer();
+socketRef.current = socket;
 
-        socket.emit("join-room", { roomId });
+if (!socket.connected) {
+  socket.connect();
+}
 
-        socket.on("room-users", (count) => {
-          setParticipants(count);
-        });
+const init = async () => {
 
-        socket.on("peer-joined", async () => {
-          await createAndSendOffer(socket, roomId);
-        });
+  try {
 
-        socket.on("offer", async (offer) => {
-          await handleOffer(socket, roomId, offer);
-        });
+    let stream;
 
-        socket.on("answer", async (answer) => {
-          await handleAnswer(answer);
-        });
+    if (localVideoRef.current) {
+      stream = await getLocalStream(localVideoRef.current);
+    }
 
-        socket.on("ice-candidate", async (candidate) => {
-          await handleIceCandidate(candidate);
-        });
-
-        socket.on("peer-left", () => {
-          if (remoteVideoRef.current) {
-            remoteVideoRef.current.srcObject = null;
-          }
-        });
-
-      } catch (err) {
-        console.error(err);
-        setStatus("Failed to access camera/microphone");
+    createPeerConnection(socket, roomId, (remoteStream) => {
+      if (remoteVideoRef.current && remoteStream) {
+        remoteVideoRef.current.srcObject = remoteStream;
       }
-    };
+    });
 
-    init();
-
-    return () => {
-      socket.emit("leave-room", { roomId });
-      socket.disconnect();
-      cleanupWebRTC();
-    };
-  }, [roomId]);
-
-  const toggleMic = () => {
-    const stream = localVideoRef.current?.srcObject;
-    if (!stream) return;
-    const track = stream.getAudioTracks()[0];
-    if (track) {
-      track.enabled = !track.enabled;
-      setMicOn(track.enabled);
+    if (stream) {
+      addTracksToPeer(stream);
     }
-  };
 
-  const toggleCamera = () => {
-    const stream = localVideoRef.current?.srcObject;
-    if (!stream) return;
-    const track = stream.getVideoTracks()[0];
-    if (track) {
-      track.enabled = !track.enabled;
-      setCamOn(track.enabled);
-    }
-  };
+    socket.emit("join-room", {
+      roomId: roomId,
+      name: userName
+    });
 
-  const leaveCall = () => {
-    socketRef.current?.emit("leave-room", { roomId });
-    socketRef.current?.disconnect();
-    cleanupWebRTC();
-    navigate("/");
-  };
+    socket.on("room-users", (count) => {
+      setParticipants(count);
+    });
 
-  return (
-    <div style={styles.page}>
+    socket.on("peer-name", (name) => {
+      setRemoteName(name);
+    });
 
-      {/* PARTICIPANT COUNT */}
-      <div style={styles.participantBadge}>
-        👥 {participants} Participant{participants !== 1 ? "s" : ""}
-      </div>
+    socket.on("peer-joined", async () => {
+      await createAndSendOffer(socket, roomId);
+    });
 
-      {/* SETTINGS PANEL */}
-      {showSettings && (
-        <div style={styles.settingsPanel}>
-          <h4>Settings</h4>
+    socket.on("offer", async (offer) => {
+      await handleOffer(socket, roomId, offer);
+    });
 
-          <div style={styles.settingItem}>
-            <span>Microphone</span>
-            <button onClick={toggleMic}>
-              {micOn ? "Turn Off" : "Turn On"}
-            </button>
-          </div>
+    socket.on("answer", async (answer) => {
+      await handleAnswer(answer);
+    });
 
-          <div style={styles.settingItem}>
-            <span>Camera</span>
-            <button onClick={toggleCamera}>
-              {camOn ? "Turn Off" : "Turn On"}
-            </button>
-          </div>
+    socket.on("ice-candidate", async (candidate) => {
+      await handleIceCandidate(candidate);
+    });
 
-          {/* HELP SECTION */}
-          <div style={styles.settingItem}>
-            <span>Help</span>
-            <button onClick={() => setShowHelp(!showHelp)}>
-              {showHelp ? "Hide" : "Show"}
-            </button>
-          </div>
+    socket.on("peer-left", () => {
+      if (remoteVideoRef.current) {
+        remoteVideoRef.current.srcObject = null;
+      }
+    });
 
-          {showHelp && (
-            <div style={styles.helpBox}>
-              <p><strong>Help Guide</strong></p>
-              <p>🎤 Click mic to mute/unmute.</p>
-              <p>📷 Click camera to turn video on/off.</p>
-              <p>📞 Click phone to leave meeting.</p>
-              <p>👥 Top right shows participant count.</p>
-              <p>⚙️ Use settings to control options.</p>
-            </div>
-          )}
-        </div>
-      )}
+  } catch (err) {
+    console.error("WebRTC error:", err);
+    setStatus("Failed to access camera/microphone");
+  }
 
-      {/* VIDEO GRID */}
-      <div style={styles.grid}>
-        <div style={styles.card}>
-          <video
-            ref={localVideoRef}
-            autoPlay
-            playsInline
-            muted
-            style={styles.video}
-          />
-          <div style={styles.nameTag}>You</div>
-        </div>
+};
 
-        <div style={styles.card}>
-          <video
-            ref={remoteVideoRef}
-            autoPlay
-            playsInline
-            style={styles.video}
-          />
-          <div style={styles.nameTag}>Participant</div>
-        </div>
-      </div>
+init();
 
-      {status && (
-        <p style={{ textAlign: "center", color: "#f87171" }}>{status}</p>
-      )}
+return () => {
 
-      {/* CONTROLS */}
-      <div style={styles.controls}>
-        <button style={styles.iconBtn} onClick={toggleMic}>
-          {micOn ? "🎤" : "🔇"}
-        </button>
+  if (socketRef.current) {
+    socketRef.current.emit("leave-room", { roomId });
+  }
 
-        <button style={styles.iconBtn} onClick={toggleCamera}>
-          {camOn ? "📷" : "🚫"}
-        </button>
+  cleanupWebRTC();
 
-        <button style={styles.iconBtn} onClick={leaveCall}>
-          📞
-        </button>
+};
 
-        <button
-          style={styles.iconBtn}
-          onClick={() => setShowSettings(!showSettings)}
-        >
-          ⚙️
-        </button>
-      </div>
+}, [roomId, userName]);
+
+const toggleMic = () => {
+
+const stream = localVideoRef.current?.srcObject;
+if (!stream) return;
+
+const track = stream.getAudioTracks()[0];
+
+if (track) {
+  track.enabled = !track.enabled;
+  setMicOn(track.enabled);
+}
+
+};
+
+const toggleCamera = () => {
+
+const stream = localVideoRef.current?.srcObject;
+if (!stream) return;
+
+const track = stream.getVideoTracks()[0];
+
+if (track) {
+  track.enabled = !track.enabled;
+  setCamOn(track.enabled);
+}
+
+};
+
+const leaveCall = () => {
+
+socketRef.current?.emit("leave-room", { roomId });
+
+cleanupWebRTC();
+
+navigate("/");
+
+};
+
+return (
+
+<div style={styles.page}>
+
+  <div style={styles.backButton} onClick={leaveCall}>
+    ←
+  </div>
+
+  <div style={styles.participantBadge}>
+    👥 {participants} Participant{participants !== 1 ? "s" : ""}
+  </div>
+
+  <div style={styles.grid}>
+
+    <div style={styles.card}>
+      <video
+        ref={localVideoRef}
+        autoPlay
+        playsInline
+        muted
+        style={styles.video}
+      />
+      <div style={styles.nameTag}>{userName}</div>
     </div>
-  );
+
+    <div style={styles.card}>
+      <video
+        ref={remoteVideoRef}
+        autoPlay
+        playsInline
+        style={styles.video}
+      />
+      <div style={styles.nameTag}>{remoteName}</div>
+    </div>
+
+  </div>
+
+  {status && (
+    <p style={{ textAlign: "center", color: "#f87171" }}>{status}</p>
+  )}
+
+  <div style={styles.controls}>
+
+    <button style={styles.iconBtn} onClick={toggleMic}>
+      {micOn ? "🎤" : "🔇"}
+    </button>
+
+    <button style={styles.iconBtn} onClick={toggleCamera}>
+      {camOn ? "📷" : "🚫"}
+    </button>
+
+    <button style={styles.iconBtn} onClick={leaveCall}>
+      📞
+    </button>
+
+    <button
+      style={styles.iconBtn}
+      onClick={() => setShowSettings(!showSettings)}
+    >
+      ⚙️
+    </button>
+
+  </div>
+
+</div>
+
+);
+
 };
 
 export default Room;
 
 const styles = {
-  page: {
-    height: "100vh",
-    width: "100vw",
-    background: "#0b1120",
-    display: "flex",
-    flexDirection: "column",
-    justifyContent: "space-between",
-    overflow: "hidden",
-    color: "white",
-    position: "relative",
-  },
 
-  participantBadge: {
-    position: "absolute",
-    top: "20px",
-    right: "20px",
-    background: "rgba(0,0,0,0.6)",
-    padding: "8px 14px",
-    borderRadius: "20px",
-    fontSize: "0.9rem",
-    zIndex: 1000,
-  },
+page: {
+height: "100vh",
+width: "100vw",
+background: "#0b1120",
+display: "flex",
+flexDirection: "column",
+justifyContent: "space-between",
+overflow: "hidden",
+color: "white",
+position: "relative",
+},
 
-  settingsPanel: {
-    position: "absolute",
-    top: "70px",
-    right: "20px",
-    width: "240px",
-    background: "#1f2937",
-    padding: "15px",
-    borderRadius: "12px",
-    boxShadow: "0 10px 30px rgba(0,0,0,0.5)",
-    zIndex: 1000,
-  },
+backButton: {
+position: "absolute",
+top: "20px",
+left: "20px",
+fontSize: "18px",
+cursor: "pointer",
+color: "white",
+zIndex: 1000,
+background: "rgba(0,0,0,0.5)",
+padding: "4px 8px",
+borderRadius: "50%"
+},
 
-  settingItem: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginTop: "10px",
-  },
+participantBadge: {
+position: "absolute",
+top: "20px",
+right: "20px",
+background: "rgba(0,0,0,0.6)",
+padding: "8px 14px",
+borderRadius: "20px",
+fontSize: "0.9rem",
+zIndex: 1000,
+},
 
-  helpBox: {
-    marginTop: "10px",
-    background: "#111827",
-    padding: "10px",
-    borderRadius: "8px",
-    fontSize: "0.8rem",
-    lineHeight: "1.4",
-  },
+grid: {
+flex: 1,
+display: "grid",
+gridTemplateColumns: "1fr 1fr",
+gap: "20px",
+padding: "30px",
+},
 
-  grid: {
-    flex: 1,
-    display: "grid",
-    gridTemplateColumns: "1fr 1fr",
-    gap: "20px",
-    padding: "30px",
-  },
+card: {
+position: "relative",
+borderRadius: "20px",
+overflow: "hidden",
+background: "#111",
+},
 
-  card: {
-    position: "relative",
-    borderRadius: "20px",
-    overflow: "hidden",
-    background: "#111",
-  },
+video: {
+width: "100%",
+height: "100%",
+objectFit: "cover",
+},
 
-  video: {
-    width: "100%",
-    height: "100%",
-    objectFit: "cover",
-  },
+nameTag: {
+position: "absolute",
+bottom: "10px",
+left: "10px",
+background: "rgba(0,0,0,0.6)",
+padding: "6px 12px",
+borderRadius: "12px",
+fontSize: "0.9rem",
+},
 
-  nameTag: {
-    position: "absolute",
-    bottom: "10px",
-    left: "10px",
-    background: "rgba(0,0,0,0.6)",
-    padding: "6px 12px",
-    borderRadius: "12px",
-    fontSize: "0.9rem",
-  },
+controls: {
+padding: "20px",
+display: "flex",
+justifyContent: "center",
+gap: "25px",
+},
 
-  controls: {
-    padding: "20px",
-    display: "flex",
-    justifyContent: "center",
-    gap: "25px",
-  },
+iconBtn: {
+padding: "18px",
+borderRadius: "50%",
+border: "none",
+background: "#1f2937",
+color: "white",
+fontSize: "1.3rem",
+cursor: "pointer",
+}
 
-  iconBtn: {
-    padding: "18px",
-    borderRadius: "50%",
-    border: "none",
-    background: "#1f2937",
-    color: "white",
-    fontSize: "1.3rem",
-    cursor: "pointer",
-  },
 };
