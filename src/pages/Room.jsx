@@ -1,7 +1,7 @@
+
 import { useEffect, useRef, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { io } from "socket.io-client";
-
+import { socket } from "../services/socket";
 import {
   createPeerConnection,
   getLocalStream,
@@ -30,9 +30,10 @@ const Room = () => {
     const initRoom = async () => {
       try {
         // 1️⃣ Create socket PER TAB
-        socketRef.current = io("http://localhost:5000");
+      socketRef.current = socket;
+      socket.connect();
 
-        const socket = socketRef.current;
+      const socketInstance = socketRef.current;
 
         // 2️⃣ Get camera + mic
         await getLocalStream(localVideoRef.current);
@@ -48,31 +49,31 @@ const Room = () => {
         addTracksToPeer();
 
         // 4️⃣ Join room
-        socket.emit("join-room", { roomId });
+        socketInstance.emit("join-room", { roomId });
 
         // 5️⃣ Signaling events
-        socket.on("peer-joined", async () => {
+        socketInstance.on("peer-joined", async () => {
           console.log("Peer joined → creating offer");
           setParticipants(2);
           setStatus("");
           await createAndSendOffer(socket, roomId);
         });
 
-        socket.on("offer", async (offer) => {
+        socketInstance.on("offer", async (offer) => {
           console.log("Offer received");
           await handleOffer(socket, roomId, offer);
         });
 
-        socket.on("answer", async (answer) => {
+        socketInstance.on("answer", async (answer) => {
           console.log("Answer received");
           await handleAnswer(answer);
         });
 
-        socket.on("ice-candidate", async (candidate) => {
+        socketInstance.on("ice-candidate", async (candidate) => {
           await handleIceCandidate(candidate);
         });
 
-        socket.on("peer-left", () => {
+        socketInstance.on("peer-left", () => {
           setParticipants(1);
           setStatus("The other user left the call");
           if (remoteVideoRef.current) {
@@ -95,18 +96,18 @@ const Room = () => {
   }, [roomId]);
 
   const cleanupRoom = () => {
-    const socket = socketRef.current;
+    const socketInstance = socketRef.current;
     if (!socket) return;
 
-    socket.emit("leave-room", { roomId });
+    socketInstance.emit("leave-room", { roomId });
 
-    socket.off("peer-joined");
-    socket.off("offer");
-    socket.off("answer");
-    socket.off("ice-candidate");
-    socket.off("peer-left");
+    socketInstance.off("peer-joined");
+    socketInstance.off("offer");
+    socketInstance.off("answer");
+    socketInstance.off("ice-candidate");
+    socketInstance.off("peer-left");
 
-    socket.disconnect();
+    socketInstance.disconnect();
     cleanupWebRTC();
   };
 
