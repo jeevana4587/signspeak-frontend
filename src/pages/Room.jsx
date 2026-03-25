@@ -1,153 +1,130 @@
 import { useEffect, useRef, useState } from "react";
-import { useParams, useNavigate } from "react-router-dom";
-import { io } from "socket.io-client";
-
+import { useParams, useNavigate, useLocation } from "react-router-dom";
+import { socket } from "../services/socket";
 import {
-  createPeerConnection,
-  getLocalStream,
-  addTracksToPeer,
-  createAndSendOffer,
-  handleOffer,
-  handleAnswer,
-  handleIceCandidate,
-  cleanupWebRTC,
+  createPeerConnection, getLocalStream, addTracksToPeer,
+  createAndSendOffer, handleOffer, handleAnswer,
+  handleIceCandidate, cleanupWebRTC,
 } from "../services/webrtc";
 
 const Room = () => {
   const { roomId } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
+  const userName = location?.state?.name || "Guest";
 
   const localVideoRef = useRef(null);
   const remoteVideoRef = useRef(null);
-  const socketRef = useRef(null);
 
-  const [participants, setParticipants] = useState(1);
-  const [status, setStatus] = useState("");
+  const [participants, setParticipants] = useState(0);
+  const [status, setStatus] = useState("Connecting...");
+  const [micOn, setMicOn] = useState(true);
+  const [camOn, setCamOn] = useState(true);
+  const [remoteName, setRemoteName] = useState("Waiting...");
 
-  useEffect(() => {
-    let mounted = true;
+ useEffect(() => {
+  const init = async () => {
+    try {
+      // 1. Get Media First
+      const stream = await getLocalStream(localVideoRef.current);
+      
+      // 2. Setup Socket Connection
+      if (!socket.connected) socket.connect();
+      console.log("🟢 Socket connected");
 
-    const initRoom = async () => {
-      try {
-        // 1️⃣ Create socket PER TAB
-        socketRef.current = io("http://localhost:5000");
+      // 3. Initialize PeerConnection (Listeners ready but no offer yet)
+      createPeerConnection(socket, roomId, (remoteStream) => {
+        if (remoteVideoRef.current) remoteVideoRef.current.srcObject = remoteStream;
+      });
+      addTracksToPeer(stream);
 
-        const socket = socketRef.current;
+      // 4. Join the room ONLY after PC and Stream are ready
+      socket.emit("join-room", { roomId, name: userName });
 
-        // 2️⃣ Get camera + mic
-        await getLocalStream(localVideoRef.current);
-        if (!mounted) return;
+      // LISTENERS
+      socket.on("your-role", (role) => {
+        if (role === "caller") console.log("🎯 I am caller → creating offer");
+        socket.emit("get-all-users", { roomId }); // Optional: for participant list
+      });
 
-        // 3️⃣ Create PeerConnection
-        createPeerConnection(socket, roomId, (remoteStream) => {
-          if (remoteVideoRef.current) {
-            remoteVideoRef.current.srcObject = remoteStream;
-          }
-        });
+      socket.on("start-offer", async () => {
+        // This only fires for the Caller when Callee joins
+        await createAndSendOffer(socket, roomId);
+        // "📤 Offer sent" is logged inside createAndSendOffer
+      });
 
-        addTracksToPeer();
+      socket.on("offer", async (offer) => {
+        console.log("📥 Offer received");
+        await handleOffer(socket, roomId, offer);
+        // "📤 Answer sent" is logged inside handleOffer
+      });
 
-        // 4️⃣ Join room
-        socket.emit("join-room", { roomId });
+      socket.on("answer", async (answer) => {
+        console.log("📥 Answer received"); // Perfect Order!
+        await handleAnswer(answer);
+      });
 
-        // 5️⃣ Signaling events
-        socket.on("peer-joined", async () => {
-          console.log("Peer joined → creating offer");
-          setParticipants(2);
-          setStatus("");
-          await createAndSendOffer(socket, roomId);
-        });
+      socket.on("ice-candidate", async (candidate) => {
+        // ICE candidates will start flowing as soon as LocalDescription is set
+        await handleIceCandidate(candidate);
+      });
 
-        socket.on("offer", async (offer) => {
-          console.log("Offer received");
-          await handleOffer(socket, roomId, offer);
-        });
+    } catch (err) {
+      console.error("❌ WebRTC error:", err);
+    }
+  };
 
-        socket.on("answer", async (answer) => {
-          console.log("Answer received");
-          await handleAnswer(answer);
-        });
-
-        socket.on("ice-candidate", async (candidate) => {
-          await handleIceCandidate(candidate);
-        });
-
-        socket.on("peer-left", () => {
-          setParticipants(1);
-          setStatus("The other user left the call");
-          if (remoteVideoRef.current) {
-            remoteVideoRef.current.srcObject = null;
-          }
-        });
-      } catch (err) {
-        console.error("Room init error:", err);
-        setStatus("Failed to access camera/microphone");
-      }
-    };
-
-    initRoom();
-
-    return () => {
-      mounted = false;
-      cleanupRoom();
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [roomId]);
-
-  const cleanupRoom = () => {
-    const socket = socketRef.current;
-    if (!socket) return;
-
-    socket.emit("leave-room", { roomId });
-
-    socket.off("peer-joined");
+  init();
+  
+  return () => {
+    socket.off("your-role");
+    socket.off("start-offer");
     socket.off("offer");
     socket.off("answer");
     socket.off("ice-candidate");
-    socket.off("peer-left");
-
-    socket.disconnect();
     cleanupWebRTC();
+  };
+}, [roomId, userName]);
+
+  const toggleMic = () => {
+    const stream = localVideoRef.current?.srcObject;
+    const track = stream?.getAudioTracks()[0];
+    if (track) { track.enabled = !track.enabled; setMicOn(track.enabled); }
+  };
+
+  const toggleCamera = () => {
+    const stream = localVideoRef.current?.srcObject;
+    const track = stream?.getVideoTracks()[0];
+    if (track) { track.enabled = !track.enabled; setCamOn(track.enabled); }
   };
 
   const leaveCall = () => {
-    cleanupRoom();
+    socket.emit("leave-room", { roomId });
+    cleanupWebRTC();
     navigate("/");
   };
 
   return (
     <div style={styles.page}>
-      <div style={styles.videoWrapper}>
-        <video
-          ref={localVideoRef}
-          autoPlay
-          playsInline
-          muted
-          style={styles.video}
-        />
-        <video
-          ref={remoteVideoRef}
-          autoPlay
-          playsInline
-          style={styles.video}
-        />
+      <div style={styles.backButton} onClick={leaveCall}>←</div>
+      <div style={styles.participantBadge}>
+        👥 {participants} Participant{participants !== 1 ? "s" : ""}
       </div>
-
-      <div style={styles.info}>
-        <p><strong>Room ID:</strong> {roomId}</p>
-        <p>Participants: {participants}</p>
-
-        {participants === 1 && !status && (
-          <p style={{ opacity: 0.7 }}>Waiting for someone to join…</p>
-        )}
-
-        {status && (
-          <p style={{ color: "#f87171", marginTop: "8px" }}>{status}</p>
-        )}
-
-        <button onClick={leaveCall} style={styles.leaveBtn}>
-          Leave Call
-        </button>
+      <div style={styles.grid}>
+        <div style={styles.card}>
+          <video ref={localVideoRef} autoPlay playsInline muted style={styles.video} />
+          <div style={styles.nameTag}>{userName}</div>
+        </div>
+        <div style={styles.card}>
+          <video ref={remoteVideoRef} autoPlay playsInline style={styles.video} />
+          <div style={styles.nameTag}>{remoteName}</div>
+        </div>
+      </div>
+      {status && <p style={{ textAlign: "center", color: "#94a3b8", fontSize: 14 }}>{status}</p>}
+      <div style={styles.controls}>
+        <button style={styles.iconBtn} onClick={toggleMic}>{micOn ? "🎤" : "🔇"}</button>
+        <button style={styles.iconBtn} onClick={toggleCamera}>{camOn ? "📷" : "🚫"}</button>
+        <button style={{ ...styles.iconBtn, background: "#7f1d1d" }} onClick={leaveCall}>📞</button>
       </div>
     </div>
   );
@@ -155,38 +132,14 @@ const Room = () => {
 
 export default Room;
 
-/* STYLES UNCHANGED */
 const styles = {
-  page: {
-    minHeight: "100vh",
-    width: "100vw",
-    background: "#0f172a",
-    color: "#fff",
-    paddingTop: "40px",
-  },
-  videoWrapper: {
-    display: "flex",
-    justifyContent: "center",
-    gap: "12px",
-    flexWrap: "wrap",
-  },
-  video: {
-    width: "45vw",
-    aspectRatio: "16 / 9",
-    background: "#000",
-    borderRadius: "14px",
-  },
-  info: {
-    textAlign: "center",
-    marginTop: "24px",
-  },
-  leaveBtn: {
-    marginTop: "20px",
-    padding: "12px 20px",
-    backgroundColor: "#ef4444",
-    color: "#fff",
-    border: "none",
-    borderRadius: "10px",
-    cursor: "pointer",
-  },
+  page: { height: "100vh", width: "100vw", background: "#0b1120", display: "flex", flexDirection: "column", justifyContent: "space-between", color: "white", position: "relative" },
+  backButton: { position: "absolute", top: 20, left: 20, fontSize: 18, cursor: "pointer", background: "rgba(0,0,0,0.5)", padding: "4px 8px", borderRadius: "50%" },
+  participantBadge: { position: "absolute", top: 20, right: 20, background: "rgba(0,0,0,0.6)", padding: "8px 14px", borderRadius: 20 },
+  grid: { flex: 1, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20, padding: 30 },
+  card: { position: "relative", borderRadius: 20, overflow: "hidden", background: "#111" },
+  video: { width: "100%", height: "100%", objectFit: "cover" },
+  nameTag: { position: "absolute", bottom: 10, left: 10, background: "rgba(0,0,0,0.6)", padding: "6px 12px", borderRadius: 12 },
+  controls: { padding: 20, display: "flex", justifyContent: "center", gap: 25 },
+  iconBtn: { padding: 18, borderRadius: "50%", border: "none", background: "#1f2937", color: "white", fontSize: "1.3rem", cursor: "pointer" },
 };

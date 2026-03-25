@@ -3,9 +3,6 @@ import { useNavigate } from "react-router-dom";
 function LandingPage() {
   const navigate = useNavigate();
 
-  sessionStorage.removeItem("roomId");
-  navigate("/create-call");
-
   return (
     <div style={styles.container}>
       <h1 style={styles.title}>SignSpeak</h1>
@@ -30,6 +27,9 @@ function LandingPage() {
   );
 }
 
+export default LandingPage;
+
+/* 👇 MAKE SURE THIS EXISTS */
 const styles = {
   container: {
     minHeight: "100vh",
@@ -38,16 +38,14 @@ const styles = {
     flexDirection: "column",
     justifyContent: "center",
     alignItems: "center",
-    backgroundColor: "#0f172a",   // ✅ simple solid background
+    backgroundColor: "#0f172a",
     color: "#ffffff",
     textAlign: "center",
-    fontFamily: "'Times New Roman MT', 'Times New Roman', serif",
   },
 
   title: {
     fontSize: "3.4rem",
     fontWeight: "bold",
-    letterSpacing: "1px",
     marginBottom: "12px",
   },
 
@@ -65,25 +63,19 @@ const styles = {
 
   primaryBtn: {
     padding: "12px 28px",
-    fontSize: "1rem",
     borderRadius: "6px",
     border: "none",
     cursor: "pointer",
     backgroundColor: "#38bdf8",
     color: "#020617",
-    fontFamily: "'Times New Roman MT', 'Times New Roman', serif",
   },
 
   secondaryBtn: {
     padding: "12px 28px",
-    fontSize: "1rem",
     borderRadius: "6px",
     border: "1px solid #38bdf8",
     cursor: "pointer",
     backgroundColor: "transparent",
     color: "#38bdf8",
-    fontFamily: "'Times New Roman MT', 'Times New Roman', serif",
   },
 };
-
-export default LandingPage;
