@@ -1,126 +1,166 @@
-// src/services/webrtc.js
-
 let peerConnection = null;
 let localStream = null;
-let remoteStream = null;
 
-/* -------------------- PEER CONNECTION -------------------- */
+const ICE_SERVERS = {
+  iceServers: [
+      {
+        urls: "stun:stun.relay.metered.ca:80",
+      },
+      {
+        urls: "turn:asia.relay.metered.ca:80",
+        username: "10491e2c727491ac5aea01de",
+        credential: "MDPGRWpx9KjeSvZ7",
+      },
+      {
+        urls: "turn:asia.relay.metered.ca:80?transport=tcp",
+        username: "10491e2c727491ac5aea01de",
+        credential: "MDPGRWpx9KjeSvZ7",
+      },
+      {
+        urls: "turn:asia.relay.metered.ca:443",
+        username: "10491e2c727491ac5aea01de",
+        credential: "MDPGRWpx9KjeSvZ7",
+      },
+      {
+        urls: "turns:asia.relay.metered.ca:443?transport=tcp",
+        username: "10491e2c727491ac5aea01de",
+        credential: "MDPGRWpx9KjeSvZ7",
+      },
+  ],
+};
 
 export function createPeerConnection(socket, roomId, onRemoteStream) {
-  if (peerConnection) return peerConnection;
-
-  peerConnection = new RTCPeerConnection({
-    iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
-  });
-
-  remoteStream = new MediaStream();
-
-  peerConnection.ontrack = (event) => {
-    event.streams[0].getTracks().forEach((track) => {
-      remoteStream.addTrack(track);
-    });
-
-    if (onRemoteStream) {
-      onRemoteStream(remoteStream);
-    }
-  };
-
-  peerConnection.onicecandidate = (event) => {
-    if (event.candidate) {
-      socket.emit("ice-candidate", {
-        roomId,
-        candidate: event.candidate,
-      });
-    }
-  };
-
-  peerConnection.onconnectionstatechange = () => {
-    console.log("Peer connection state:", peerConnection.connectionState);
-  };
-
-  return peerConnection;
-}
-
-/* -------------------- MEDIA -------------------- */
-
-export async function getLocalStream(videoEl) {
-  if (!localStream) {
-    localStream = await navigator.mediaDevices.getUserMedia({
-      video: true,
-      audio: true,
-    });
-  }
-
-  if (videoEl) {
-    videoEl.srcObject = localStream;
-    videoEl.muted = true;
-    videoEl.playsInline = true;
-  }
-
-  return localStream;
-}
-
-export function addTracksToPeer() {
-  if (!peerConnection || !localStream) return;
-
-  // ALWAYS add tracks to peer
-  localStream.getTracks().forEach((track) => {
-    peerConnection.addTrack(track, localStream);
-  });
-}
-
-/* -------------------- SIGNALING -------------------- */
-
-export async function createAndSendOffer(socket, roomId) {
-  const offer = await peerConnection.createOffer();
-  await peerConnection.setLocalDescription(offer);
-
-  socket.emit("offer", { roomId, offer });
-}
-
-export async function handleOffer(socket, roomId, offer) {
-  await peerConnection.setRemoteDescription(
-    new RTCSessionDescription(offer)
-  );
-
-  const answer = await peerConnection.createAnswer();
-  await peerConnection.setLocalDescription(answer);
-
-  socket.emit("answer", { roomId, answer });
-}
-
-export async function handleAnswer(answer) {
-  if (!peerConnection) return;
-
-  await peerConnection.setRemoteDescription(
-    new RTCSessionDescription(answer)
-  );
-}
-
-export async function handleIceCandidate(candidate) {
-  if (!peerConnection || !candidate) return;
-
-  try {
-    await peerConnection.addIceCandidate(
-      new RTCIceCandidate(candidate)
-    );
-  } catch (err) {
-    console.error("ICE error:", err);
-  }
-}
-
-/* -------------------- CLEANUP -------------------- */
-
-export function cleanupWebRTC() {
+  // Always clean up before creating a new one
+  console.log("🚀 createPeerConnection CALLED");
   if (peerConnection) {
     peerConnection.close();
     peerConnection = null;
   }
 
-  if (localStream) {
-    localStream.getTracks().forEach((track) => track.stop());
-    localStream = null;
+  peerConnection = new RTCPeerConnection(ICE_SERVERS);
+
+  peerConnection.ontrack = (event) => {
+    console.log("🎥 Remote track received:", event.streams);
+    if (onRemoteStream && event.streams[0]) {
+      onRemoteStream(event.streams[0]);
+    }
+  };
+
+  peerConnection.onicecandidate = (event) => {
+  if (event.candidate) {
+    console.log("🧊 ICE Candidate:", event.candidate);
+
+    socket.emit("ice-candidate", {
+      roomId,
+      candidate: event.candidate,
+    });
+  } else {
+    console.log("❄️ ICE Gathering Complete");
+  }
+};
+
+  peerConnection.oniceconnectionstatechange = () => {
+    console.log("🧊 ICE state:", peerConnection?.iceConnectionState);
+  };
+
+  peerConnection.onconnectionstatechange = () => {
+    console.log("🔗 Connection state:", peerConnection?.connectionState);
+  };
+
+  peerConnection.onnegotiationneeded = () => {
+    console.log("🔄 Negotiation needed");
+  };
+
+  return peerConnection;
+}
+
+export async function getLocalStream(videoEl) {
+  if (!localStream) {
+    localStream = await navigator.mediaDevices.getUserMedia({
+      video: { width: 1280, height: 720 },
+      audio: true,
+    });
+  }
+  if (videoEl) {
+    videoEl.srcObject = localStream;
+  }
+  return localStream;
+}
+
+export function addTracksToPeer(stream) {
+  if (!peerConnection || !stream) return;
+  stream.getTracks().forEach((track) => {
+    console.log("✅ Adding track:", track.kind);
+    peerConnection.addTrack(track, stream);
+  });
+}
+
+export async function createAndSendOffer(socket, roomId) {
+  if (!peerConnection) return;
+  try {
+    const offer = await peerConnection.createOffer();
+    await peerConnection.setLocalDescription(offer);
+    console.log("📤 Offer sent");
+    socket.emit("offer", { roomId, offer });
+  } catch (err) {
+    console.error("❌ Error creating offer:", err);
+  }
+}
+
+export async function handleOffer(socket, roomId, offer) {
+  if (!peerConnection) return;
+  
+  // Guard: If we are already in the middle of a handshake, don't accept another offer
+  if (peerConnection.signalingState !== "stable") {
+    console.warn("⚠️ Received offer but signaling state is not stable. Ignoring.");
+    return;
   }
 
-  remoteStream = null;
+  try {
+    await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
+    const answer = await peerConnection.createAnswer();
+    await peerConnection.setLocalDescription(answer);
+    console.log("📤 Answer sent");
+    socket.emit("answer", { roomId, answer });
+  } catch (err) {
+    console.error("❌ Error handling offer:", err);
+  }
+}
+
+export async function handleAnswer(answer) {
+  if (!peerConnection) return;
+  
+  // Guard: Only process an answer if we are actually waiting for one (have-local-offer)
+  if (peerConnection.signalingState === "have-local-offer") {
+    try {
+      await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
+    } catch (err) {
+      console.error("❌ Error handling answer:", err);
+    }
+  } else {
+    console.warn("⚠️ Received answer but we are in state:", peerConnection.signalingState);
+  }
+}
+
+export async function handleIceCandidate(candidate) {
+  if (!peerConnection || !candidate) return;
+  try {
+    await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+  } catch (err) {
+    console.error("❌ ICE error:", err);
+  }
+}
+
+export function cleanupWebRTC() {
+  if (peerConnection) {
+    peerConnection.ontrack = null;
+    peerConnection.onicecandidate = null;
+    peerConnection.onconnectionstatechange = null;
+    peerConnection.close();
+    peerConnection = null;
+  }
+  if (localStream) {
+    localStream.getTracks().forEach((t) => t.stop());
+    localStream = null;
+  }
 }
