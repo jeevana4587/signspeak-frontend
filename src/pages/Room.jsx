@@ -16,91 +16,100 @@ const Room = () => {
   const localVideoRef = useRef(null);
   const remoteVideoRef = useRef(null);
 
-  const [participants, setParticipants] = useState(0);
-  const [status, setStatus] = useState("Connecting...");
+  const [participants, setParticipants] = useState(1);
+  const [status, setStatus] = useState(""); // ← EMPTY, no "Connecting..." at start
+  const [toast, setToast] = useState("");   // ← NEW: popup message
   const [micOn, setMicOn] = useState(true);
   const [camOn, setCamOn] = useState(true);
   const [remoteName, setRemoteName] = useState("Waiting...");
 
- useEffect(() => {
-  const init = async () => {
-    try {
-      // 1. Get Media First
-      const stream = await getLocalStream(localVideoRef.current);
-      
-      // 2. Setup Socket Connection
-      if (!socket.connected) socket.connect();
-      console.log("🟢 Socket connected");
-
-      // 3. Initialize PeerConnection (Listeners ready but no offer yet)
-      createPeerConnection(socket, roomId, (remoteStream) => {
-        if (remoteVideoRef.current) remoteVideoRef.current.srcObject = remoteStream;
-      });
-      addTracksToPeer(stream);
-
-      // 4. Join the room ONLY after PC and Stream are ready
-      socket.emit("join-room", { roomId, name: userName });
-
-      // LISTENERS
-      socket.on("your-role", (role) => {
-        if (role === "caller") console.log("🎯 I am caller → creating offer");
-        socket.emit("get-all-users", { roomId }); // Optional: for participant list
-      });
-
-
-      // --- ADD THESE NEW LISTENERS ---
-socket.on("user-connected", ({ name }) => {
-  setRemoteName(name); // Updates "Waiting..." to the joined user's name
-});
-
-socket.on("host-name", ({ name }) => {
-  setRemoteName(name); // Updates "Waiting..." to the host's name
-});
-
-socket.on("peer-left", () => {
-  setRemoteName("Waiting..."); // Reset if they leave
-});
-
-
-
-      socket.on("start-offer", async () => {
-        // This only fires for the Caller when Callee joins
-        await createAndSendOffer(socket, roomId);
-        // "📤 Offer sent" is logged inside createAndSendOffer
-      });
-
-      socket.on("offer", async (offer) => {
-        console.log("📥 Offer received");
-        await handleOffer(socket, roomId, offer);
-        // "📤 Answer sent" is logged inside handleOffer
-      });
-
-      socket.on("answer", async (answer) => {
-        console.log("📥 Answer received"); // Perfect Order!
-        await handleAnswer(answer);
-      });
-
-      socket.on("ice-candidate", async (candidate) => {
-        // ICE candidates will start flowing as soon as LocalDescription is set
-        await handleIceCandidate(candidate);
-      });
-
-    } catch (err) {
-      console.error("❌ WebRTC error:", err);
-    }
+  // Show a popup toast message for 3 seconds
+  const showToast = (msg) => {
+    setToast(msg);
+    setTimeout(() => setToast(""), 3000);
   };
 
-  init();
-  
-  return () => {
-    socket.off("your-role");
-    socket.off("start-offer");
-    socket.off("offer");
-    socket.off("answer");
-    socket.off("ice-candidate");
-    cleanupWebRTC();
-  };
-}, [roomId, userName]);
+  useEffect(() => {
+    const init = async () => {
+      try {
+        const stream = await getLocalStream(localVideoRef.current);
+
+        if (!socket.connected) socket.connect();
+        console.log("🟢 Socket connected");
+
+        createPeerConnection(socket, roomId, (remoteStream) => {
+          if (remoteVideoRef.current) {
+            remoteVideoRef.current.srcObject = remoteStream;
+            showToast("✅ User Connected!");
+            setParticipants(2);
+          }
+        });
+        addTracksToPeer(stream);
+
+        socket.emit("join-room", { roomId, name: userName });
+
+        socket.on("your-role", (role) => {
+          if (role === "caller") {
+            setParticipants(1);
+          }
+          socket.emit("get-all-users", { roomId });
+        });
+
+        socket.on("user-connected", ({ name }) => {
+          setRemoteName(name);
+          showToast(`✅ ${name} joined the call!`);
+          setParticipants(2);
+        });
+
+        socket.on("host-name", ({ name }) => {
+          setRemoteName(name);
+          showToast(`✅ Connected with ${name}!`);
+          setParticipants(2);
+        });
+
+        socket.on("peer-left", () => {
+          setRemoteName("Waiting...");
+          showToast("❌ User left the call");
+          setParticipants(1);
+          if (remoteVideoRef.current) remoteVideoRef.current.srcObject = null;
+        });
+
+        socket.on("start-offer", async () => {
+          await createAndSendOffer(socket, roomId);
+        });
+
+        socket.on("offer", async (offer) => {
+          await handleOffer(socket, roomId, offer);
+        });
+
+        socket.on("answer", async (answer) => {
+          await handleAnswer(answer);
+        });
+
+        socket.on("ice-candidate", async (candidate) => {
+          await handleIceCandidate(candidate);
+        });
+
+      } catch (err) {
+        console.error("❌ WebRTC error:", err);
+        showToast("❌ Error connecting. Please refresh.");
+      }
+    };
+
+    init();
+
+    return () => {
+      socket.off("your-role");
+      socket.off("user-connected");
+      socket.off("host-name");
+      socket.off("peer-left");
+      socket.off("start-offer");
+      socket.off("offer");
+      socket.off("answer");
+      socket.off("ice-candidate");
+      cleanupWebRTC();
+    };
+  }, [roomId, userName]);
 
   const toggleMic = () => {
     const stream = localVideoRef.current?.srcObject;
@@ -122,21 +131,42 @@ socket.on("peer-left", () => {
 
   return (
     <div style={styles.page}>
+
+      {/* TOAST POPUP */}
+      {toast !== "" && (
+        <div style={styles.toast}>{toast}</div>
+      )}
+
       <div style={styles.backButton} onClick={leaveCall}>←</div>
       <div style={styles.participantBadge}>
         👥 {participants} Participant{participants !== 1 ? "s" : ""}
       </div>
+
       <div style={styles.grid}>
         <div style={styles.card}>
           <video ref={localVideoRef} autoPlay playsInline muted style={styles.video} />
           <div style={styles.nameTag}>{userName}</div>
         </div>
         <div style={styles.card}>
-          <video ref={remoteVideoRef} autoPlay playsInline style={styles.video} />
+          <video
+            ref={remoteVideoRef}
+            autoPlay
+            playsInline
+            style={styles.video}
+            onCanPlay={() => {
+              showToast("✅ User Connected!");
+              setParticipants(2);
+            }}
+          />
           <div style={styles.nameTag}>{remoteName}</div>
         </div>
       </div>
-      {status && <p style={{ textAlign: "center", color: "#94a3b8", fontSize: 14 }}>{status}</p>}
+
+      {/* NO STATUS TEXT SHOWN UNLESS NEEDED */}
+      {status !== "" && (
+        <p style={{ textAlign: "center", color: "#94a3b8", fontSize: 14 }}>{status}</p>
+      )}
+
       <div style={styles.controls}>
         <button style={styles.iconBtn} onClick={toggleMic}>{micOn ? "🎤" : "🔇"}</button>
         <button style={styles.iconBtn} onClick={toggleCamera}>{camOn ? "📷" : "🚫"}</button>
@@ -150,6 +180,22 @@ export default Room;
 
 const styles = {
   page: { height: "100vh", width: "100vw", background: "#0b1120", display: "flex", flexDirection: "column", justifyContent: "space-between", color: "white", position: "relative" },
+  toast: {
+    position: "fixed",
+    top: 30,
+    left: "50%",
+    transform: "translateX(-50%)",
+    background: "#1e293b",
+    color: "white",
+    padding: "12px 24px",
+    borderRadius: 12,
+    fontSize: 15,
+    fontWeight: 600,
+    zIndex: 999,
+    boxShadow: "0 4px 20px rgba(0,0,0,0.4)",
+    border: "1px solid #334155",
+    whiteSpace: "nowrap",
+  },
   backButton: { position: "absolute", top: 20, left: 20, fontSize: 18, cursor: "pointer", background: "rgba(0,0,0,0.5)", padding: "4px 8px", borderRadius: "50%" },
   participantBadge: { position: "absolute", top: 20, right: 20, background: "rgba(0,0,0,0.6)", padding: "8px 14px", borderRadius: 20 },
   grid: { flex: 1, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20, padding: 30 },
