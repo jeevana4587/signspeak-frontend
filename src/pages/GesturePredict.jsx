@@ -1,115 +1,119 @@
-import { useEffect, useState, useRef } from "react";
-import HandTracking, { latestLandmarks } from "../mediapipe/HandTracking";
+import React, { useEffect, useState, useRef } from "react";
 
-export default function GesturePredict() {
-  const [text, setText] = useState("Show a gesture");
+function GesturePredict({ latestLandmarks }) {
+  const [gesture, setGesture] = useState("-");
+  const [sentence, setSentence] = useState("");
 
-  const lastGesture = useRef("");
+  const lastPrediction = useRef("");
   const stableCount = useRef(0);
 
-  // 🔹 Better Finger Detection
-  const getFingerStates = (lm) => {
-    const isExtended = (tip, pip) => {
-      return lm[tip].y < lm[pip].y - 0.02; // tolerance
-    };
-
-    // Palm reference
-    const palm = lm[0];
-
-    // Thumb detection using distance from palm
-    const thumbDistance = Math.abs(lm[4].x - palm.x);
-    const thumb = thumbDistance > 0.08;
-
-    const index = isExtended(8, 6);
-    const middle = isExtended(12, 10);
-    const ring = isExtended(16, 14);
-    const pinky = isExtended(20, 18);
-
-    return [thumb, index, middle, ring, pinky];
-  };
-
-  // 🔹 Gesture Rules (Order Matters)
-  const detectGesture = (f) => {
-    const [thumb, index, middle, ring, pinky] = f;
-
-    // Thumb Up
-    if (thumb && !index && !middle && !ring && !pinky)
-      return "Yes";
-
-    // Fist
-    if (!thumb && !index && !middle && !ring && !pinky)
-      return "Stop";
-
-    // Open Palm
-    if (thumb && index && middle && ring && pinky)
-      return "Hello";
-
-    // Peace
-    if (!thumb && index && middle && !ring && !pinky)
-      return "Okay";
-
-    // Point
-    if (!thumb && index && !middle && !ring && !pinky)
-      return "Point";
-
-    return "";
-  };
+  console.log("🔥 Received landmarks:", latestLandmarks);
 
   useEffect(() => {
-    const interval = setInterval(() => {
-      if (!latestLandmarks) return;
+    if (!latestLandmarks) return;
 
-      const fingers = getFingerStates(latestLandmarks);
-      const gesture = detectGesture(fingers);
+    const sendData = async () => {
+      try {
+        console.log("📤 Sending landmarks...");
 
-      if (!gesture) return;
+        const flattened = latestLandmarks.flatMap(p => [p.x, p.y, p.z]);
 
-      if (gesture === lastGesture.current) {
-        stableCount.current += 1;
-      } else {
-        stableCount.current = 0;
-        lastGesture.current = gesture;
+        const res = await fetch("http://localhost:5000/predict", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ landmarks: flattened }),
+        });
+
+        console.log("📡 Status:", res.status);
+
+        const data = await res.json();
+        console.log("🟢 RESPONSE:", data);
+
+        if (!data.gesture) {
+          console.warn("⚠️ No gesture received");
+          return;
+        }
+
+        const current = data.gesture.trim();
+
+        console.log("✅ Prediction:", current);
+
+        setGesture(current);
+
+        // 🧠 Stability logic
+        if (current === lastPrediction.current) {
+          stableCount.current++;
+        } else {
+          stableCount.current = 0;
+        }
+
+        lastPrediction.current = current;
+
+        // ✅ Add to sentence when stable
+        if (stableCount.current >= 3) {
+
+          // 🔥 SPACE
+          if (current === "SPACE") {
+            setSentence(prev => prev + " ");
+          }
+
+          // 🔥 DELETE
+          else if (current === "DEL") {
+            setSentence(prev => prev.slice(0, -1));
+          }
+
+          // 🔤 NORMAL LETTER
+          else {
+            setSentence(prev => prev + current);
+          }
+
+          stableCount.current = 0;
+
+          // 🔥 Prevent immediate duplicate letters
+          setTimeout(() => {
+            lastPrediction.current = "";
+          }, 800);
+        }
+
+      } catch (err) {
+        console.error("❌ FETCH ERROR:", err);
       }
+    };
 
-      // Require stability for ~0.6s
-      if (stableCount.current > 6) {
-        setText(gesture);
-      }
-    }, 100);
+    sendData();
 
-    return () => clearInterval(interval);
-  }, []);
+  }, [latestLandmarks]);
+
+  // 🔊 Speak
+  const speak = () => {
+    if (!sentence) return;
+    const speech = new SpeechSynthesisUtterance(sentence);
+    speechSynthesis.speak(speech);
+  };
+
+  // 🧹 Clear
+  const clearText = () => {
+    setSentence("");
+  };
 
   return (
-    <div style={{ display: "flex", height: "100vh" }}>
-      {/* LEFT PANEL */}
-      <div
-        style={{
-          width: "40%",
-          background: "#020c1b",
-          color: "white",
-          padding: "40px",
-        }}
-      >
-        <h1>Gesture Recognition</h1>
-        <h2>Detected Text</h2>
-        <h1 style={{ color: "#38bdf8", marginTop: "30px" }}>
-          {text}
-        </h1>
-      </div>
+    <div style={{ textAlign: "center", marginTop: "20px" }}>
+      <h2>Current Letter</h2>
+      <h1 style={{ fontSize: "50px", color: "#00ffcc" }}>
+        {gesture}
+      </h1>
 
-      {/* RIGHT PANEL */}
-      <div
-        style={{
-          width: "60%",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          background: "#0a192f",
-        }}
-      >
-        <HandTracking />
-      </div>
+      <h2>Sentence</h2>
+      <h1 style={{ fontSize: "40px" }}>
+        {sentence || "_"}
+      </h1>
+
+      <button onClick={speak}>🔊 Speak</button>
+      <button onClick={clearText}>Clear</button>
     </div>
   );
 }
+
+export default GesturePredict;
