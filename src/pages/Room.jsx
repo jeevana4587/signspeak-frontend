@@ -47,6 +47,22 @@ const Room = () => {
         socket.emit("get-all-users", { roomId }); // Optional: for participant list
       });
 
+
+      // --- ADD THESE NEW LISTENERS ---
+socket.on("user-connected", ({ name }) => {
+  setRemoteName(name); // Updates "Waiting..." to the joined user's name
+});
+
+socket.on("host-name", ({ name }) => {
+  setRemoteName(name); // Updates "Waiting..." to the host's name
+});
+
+socket.on("peer-left", () => {
+  setRemoteName("Waiting..."); // Reset if they leave
+});
+
+
+
       socket.on("start-offer", async () => {
         // This only fires for the Caller when Callee joins
         await createAndSendOffer(socket, roomId);
