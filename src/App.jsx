@@ -1,3 +1,4 @@
+import GesturePredict from "./pages/GesturePredict";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import LandingPage from "./pages/landing-page.jsx";
 import JoinCall from "./pages/Join-room.jsx";
@@ -21,4 +22,6 @@ function App() {
   );
 }
 
-export default App;
+export default function App() {
+  return <GesturePredict />;
+}
