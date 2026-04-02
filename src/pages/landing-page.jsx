@@ -1,0 +1,81 @@
+import { useNavigate } from "react-router-dom";
+
+function LandingPage() {
+  const navigate = useNavigate();
+
+  return (
+    <div style={styles.container}>
+      <h1 style={styles.title}>SignSpeak</h1>
+
+      <p style={styles.subtitle}>
+        Real-Time Sign Language to Text Translation in Video Calls
+      </p>
+
+      <div style={styles.buttonGroup}>
+        <button style={styles.primaryBtn} onClick={() => navigate("/join")}>
+          Join Room
+        </button>
+
+        <button
+          style={styles.secondaryBtn}
+          onClick={() => navigate("/create")}
+        >
+          Make a Call
+        </button>
+      </div>
+    </div>
+  );
+}
+
+export default LandingPage;
+
+/* 👇 MAKE SURE THIS EXISTS */
+const styles = {
+  container: {
+    minHeight: "100vh",
+    width: "100vw",
+    display: "flex",
+    flexDirection: "column",
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "#0f172a",
+    color: "#ffffff",
+    textAlign: "center",
+  },
+
+  title: {
+    fontSize: "3.4rem",
+    fontWeight: "bold",
+    marginBottom: "12px",
+  },
+
+  subtitle: {
+    fontSize: "1.2rem",
+    maxWidth: "500px",
+    marginBottom: "40px",
+    color: "#cbd5f5",
+  },
+
+  buttonGroup: {
+    display: "flex",
+    gap: "20px",
+  },
+
+  primaryBtn: {
+    padding: "12px 28px",
+    borderRadius: "6px",
+    border: "none",
+    cursor: "pointer",
+    backgroundColor: "#38bdf8",
+    color: "#020617",
+  },
+
+  secondaryBtn: {
+    padding: "12px 28px",
+    borderRadius: "6px",
+    border: "1px solid #38bdf8",
+    cursor: "pointer",
+    backgroundColor: "transparent",
+    color: "#38bdf8",
+  },
+};
