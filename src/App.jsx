@@ -1,3 +1,4 @@
+import GesturePredict from "./pages/GesturePredict";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import LandingPage from "./pages/landing-page.jsx";
 import JoinCall from "./pages/Join-room.jsx";
@@ -16,9 +17,12 @@ function App() {
         <Route path="/create" element={<CreateCall />} />
         <Route path="/hand-demo" element={<HandTrackingDemo />} />
         <Route path="/room/:roomId" element={<Room />} />
+        <Route path="/gesture-predict" element={<GesturePredict />} />
       </Routes>
     </BrowserRouter>
   );
 }
 
 export default App;
+//   return <GesturePredict />;
+// }
