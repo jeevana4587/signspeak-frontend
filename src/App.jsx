@@ -17,11 +17,12 @@ function App() {
         <Route path="/create" element={<CreateCall />} />
         <Route path="/hand-demo" element={<HandTrackingDemo />} />
         <Route path="/room/:roomId" element={<Room />} />
+        <Route path="/gesture-predict" element={<GesturePredict />} />
       </Routes>
     </BrowserRouter>
   );
 }
 
-export default function App() {
-  return <GesturePredict />;
-}
+export default App;
+//   return <GesturePredict />;
+// }
